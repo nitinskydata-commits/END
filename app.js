@@ -12,8 +12,17 @@ const state = {
   peers: new Map(),
   reconnectAttempt: 0,
   intentionalClose: false,
-  isExtendMode: false
+  isExtendMode: false,
+  pendingMessages: []
 };
+
+function sendSocket(message) {
+  if (state.socket?.readyState === WebSocket.OPEN) {
+    state.socket.send(JSON.stringify(message));
+  } else {
+    state.pendingMessages.push(message);
+  }
+}
 
 function randomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -55,6 +64,8 @@ function setSessionMode(code, role = "viewer") {
     $("#empty-title").textContent = "Waiting for a live screen";
     $("#empty-description").textContent = "The shared screen will appear here automatically.";
   }
+  $("#choose-screen").classList.toggle("hidden", role !== "host");
+  $("#stream-controls").classList.toggle("hidden", role !== "host");
   requestWakeLock();
   lockSecondScreenOrientation();
   drawQR();
@@ -95,7 +106,7 @@ async function chooseScreen() {
     $("#room-status-text").textContent = "Live";
     $("#room-status-dot").classList.add("live");
     if (state.channel) state.channel.postMessage({ type: "streaming", room: state.roomCode });
-    state.socket?.send(JSON.stringify({ type: "streaming", room: state.roomCode }));
+    sendSocket({ type: "streaming", room: state.roomCode });
     stream.getVideoTracks()[0].addEventListener("ended", stopSharing);
     for (const peer of state.peers.values()) addStreamTracks(peer, stream);
     renegotiatePeers();
@@ -117,7 +128,7 @@ function stopSharing() {
   $("#room-status-text").textContent = "Ready";
   $("#room-status-dot").classList.remove("live");
   if (state.channel) state.channel.postMessage({ type: "stopped", room: state.roomCode });
-  state.socket?.send(JSON.stringify({ type: "stopped", room: state.roomCode }));
+  sendSocket({ type: "stopped", room: state.roomCode });
 }
 
 function connectSignaling() {
@@ -136,6 +147,8 @@ function connectSignaling() {
       peerId: state.peerId,
       role: state.role
     }));
+    for (const message of state.pendingMessages) state.socket.send(JSON.stringify(message));
+    state.pendingMessages = [];
     setTimeout(() => {
       if (state.stream) {
         state.socket?.send(JSON.stringify({ type: "streaming", room: state.roomCode }));
@@ -166,7 +179,7 @@ function connectSignaling() {
     if (message.type === "peer_joined" && message.peerId !== state.peerId) {
       state.peers.set(message.peerId, createPeer(message.peerId));
       $("#peer-list").innerHTML = `<div class="device-item"><span class="device-icon">▰</span><div><strong>Remote device</strong><small>Connected</small></div><b>●</b></div>`;
-      if (state.role === "host" && state.stream) {
+      if (state.role === "host" && message.role !== "host" && state.stream) {
         addStreamTracks(state.peers.get(message.peerId), state.stream);
         await renegotiatePeer(message.peerId);
       }
@@ -174,11 +187,11 @@ function connectSignaling() {
       if (message.streaming) {
         $("#room-status-text").textContent = "Screen is live";
         $("#room-status-dot").classList.add("live");
-        state.socket?.send(JSON.stringify({
+        sendSocket({
           type: "request_stream",
           room: state.roomCode,
           requester: state.peerId
-        }));
+        });
       } else if (state.role !== "host") {
         $("#room-status-text").textContent = "Waiting for host";
         $("#room-status-dot").classList.remove("live");
@@ -187,7 +200,17 @@ function connectSignaling() {
       state.peers.get(message.peerId)?.close();
       state.peers.delete(message.peerId);
     } else if (message.type === "request_stream") {
-      if (state.role === "host" && state.stream) renegotiatePeers();
+      if (state.role === "host" && state.stream) {
+        if (message.requester) {
+          const peer = state.peers.get(message.requester);
+          if (peer) {
+            addStreamTracks(peer, state.stream);
+            renegotiatePeer(message.requester);
+          }
+        } else {
+          renegotiatePeers();
+        }
+      }
     } else if (message.type === "signal" && message.target === state.peerId) {
       await handleSignal(message.sender, message.payload);
     }
@@ -229,7 +252,11 @@ function createPeer(peerId) {
 }
 
 function addStreamTracks(peer, stream) {
-  for (const track of stream.getTracks()) peer.addTrack(track, stream);
+  for (const track of stream.getTracks()) {
+    if (!peer.getSenders().some((sender) => sender.track === track)) {
+      peer.addTrack(track, stream);
+    }
+  }
 }
 
 async function renegotiatePeer(peerId) {
@@ -265,15 +292,13 @@ async function handleSignal(sender, payload) {
 }
 
 function sendSignal(target, payload) {
-  if (state.socket?.readyState === WebSocket.OPEN) {
-    state.socket.send(JSON.stringify({
-      type: "signal",
-      room: state.roomCode,
-      sender: state.peerId,
-      target,
-      payload
-    }));
-  }
+  sendSocket({
+    type: "signal",
+    room: state.roomCode,
+    sender: state.peerId,
+    target,
+    payload
+  });
 }
 
 function drawQR() {

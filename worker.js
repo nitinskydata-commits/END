@@ -30,10 +30,11 @@ export default {
           }
           if (!rooms.has(roomCode)) rooms.set(roomCode, { peers: new Map(), streaming: false });
           const room = rooms.get(roomCode);
-          for (const [existingPeerId, socket] of room.peers) {
-            socket.send(JSON.stringify({ type: "peer_joined", peerId }));
-            server.send(JSON.stringify({ type: "peer_joined", peerId: existingPeerId }));
+          for (const [existingPeerId, existingSocket] of room.peers) {
+            existingSocket.send(JSON.stringify({ type: "peer_joined", peerId, role: message.role }));
+            server.send(JSON.stringify({ type: "peer_joined", peerId: existingPeerId, role: existingSocket.role }));
           }
+          server.role = message.role || "viewer";
           room.peers.set(peerId, server);
           server.send(JSON.stringify({ type: "room_state", streaming: room.streaming }));
         }

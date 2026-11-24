@@ -1,4 +1,4 @@
-const CACHE = "mirrora-v1";
+const CACHE = "mirrora-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll([
