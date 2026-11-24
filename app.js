@@ -9,7 +9,9 @@ const state = {
   socket: null,
   peerId: crypto.randomUUID(),
   role: "host",
-  peers: new Map()
+  peers: new Map(),
+  reconnectAttempt: 0,
+  intentionalClose: false
 };
 
 function randomCode() {
@@ -37,8 +39,10 @@ function closeDialog(dialog) {
   else dialog.removeAttribute("open");
 }
 
-function setSessionMode(code) {
+function setSessionMode(code, role = "viewer") {
   state.roomCode = code || randomCode();
+  state.role = role;
+  state.intentionalClose = false;
   $("#room-code").textContent = state.roomCode;
   $("#landing").classList.add("hidden");
   $("#session-app").classList.remove("hidden");
@@ -52,7 +56,7 @@ function startSharing(isViewer = false) {
     openDialog($("#join-dialog"));
     return;
   }
-  setSessionMode(randomCode());
+  setSessionMode(randomCode(), "host");
   chooseScreen();
 }
 
@@ -101,10 +105,14 @@ function stopSharing() {
 
 function connectSignaling() {
   if (state.socket) state.socket.close();
+  state.intentionalClose = false;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   state.socket = new WebSocket(`${protocol}//${location.host}/ws`);
 
   state.socket.addEventListener("open", () => {
+    state.reconnectAttempt = 0;
+    $("#room-status-text").textContent = "Connected";
+    $("#room-status-dot").classList.add("live");
     state.socket.send(JSON.stringify({
       type: "join",
       room: state.roomCode,
@@ -112,8 +120,26 @@ function connectSignaling() {
     }));
   });
 
+  state.socket.addEventListener("close", () => {
+    $("#room-status-dot").classList.remove("live");
+    if (state.intentionalClose) return;
+    $("#room-status-text").textContent = "Reconnecting";
+    const delay = Math.min(1000 * (2 ** state.reconnectAttempt), 10000);
+    state.reconnectAttempt += 1;
+    setTimeout(connectSignaling, delay);
+  });
+
+  state.socket.addEventListener("error", () => {
+    $("#room-status-text").textContent = "Connection error";
+  });
+
   state.socket.addEventListener("message", async ({ data }) => {
-    const message = JSON.parse(data);
+    let message;
+    try {
+      message = JSON.parse(data);
+    } catch {
+      return;
+    }
     if (message.type === "peer_joined" && message.peerId !== state.peerId) {
       state.peers.set(message.peerId, createPeer(message.peerId));
       $("#peer-list").innerHTML = `<div class="device-item"><span class="device-icon">▰</span><div><strong>Remote device</strong><small>Connected</small></div><b>●</b></div>`;
@@ -135,8 +161,10 @@ function createPeer(peerId) {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:global.stun.twilio.com:3478" }
-    ]
+    ],
+    iceCandidatePoolSize: 4
   });
+  peer.pendingCandidates = [];
   peer.onicecandidate = ({ candidate }) => {
     if (candidate) sendSignal(peerId, { type: "candidate", candidate });
   };
@@ -145,6 +173,16 @@ function createPeer(peerId) {
     video.srcObject = streams[0];
     $("#empty-stage").classList.add("hidden");
     $("#stream-controls").classList.remove("hidden");
+    $("#room-status-text").textContent = "Receiving live";
+    $("#room-status-dot").classList.add("live");
+  };
+  peer.onconnectionstatechange = () => {
+    if (peer.connectionState === "connected") {
+      $("#room-status-text").textContent = "Secure connection";
+    } else if (["disconnected", "failed"].includes(peer.connectionState)) {
+      $("#room-status-text").textContent = "Connection interrupted";
+      showToast("The connection was interrupted.");
+    }
   };
   state.peers.set(peerId, peer);
   return peer;
@@ -170,15 +208,19 @@ async function handleSignal(sender, payload) {
   let peer = state.peers.get(sender);
   if (!peer) peer = createPeer(sender);
   if (payload.type === "offer") {
+    if (peer.signalingState !== "stable") return;
     await peer.setRemoteDescription(payload.sdp);
     if (state.stream) addStreamTracks(peer, state.stream);
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
     sendSignal(sender, { type: "answer", sdp: peer.localDescription });
+    for (const candidate of peer.pendingCandidates) await peer.addIceCandidate(candidate);
+    peer.pendingCandidates = [];
   } else if (payload.type === "answer") {
     await peer.setRemoteDescription(payload.sdp);
   } else if (payload.type === "candidate") {
-    await peer.addIceCandidate(payload.candidate);
+    if (peer.remoteDescription) await peer.addIceCandidate(payload.candidate);
+    else peer.pendingCandidates.push(payload.candidate);
   }
 }
 
@@ -289,12 +331,12 @@ $("#join-form").addEventListener("submit", (event) => {
   const code = $("#join-code").value.trim().toUpperCase();
   if (!code) return;
   closeDialog($("#join-dialog"));
-  setSessionMode(code);
+  setSessionMode(code, "viewer");
   showToast("Joined session.");
 });
 $("#guest-button").addEventListener("click", () => {
   closeDialog($("#join-dialog"));
-  setSessionMode(randomCode());
+  setSessionMode(randomCode(), "host");
   showToast("Guest session ready.");
 });
 
@@ -302,6 +344,8 @@ $("#copy-code").addEventListener("click", () => copyText(state.roomCode));
 $("#copy-link").addEventListener("click", () => copyText(`${location.origin}${location.pathname}#room=${state.roomCode}`));
 $("#leave-session").addEventListener("click", () => {
   stopSharing();
+  state.intentionalClose = true;
+  if (state.socket) state.socket.close();
   if (state.channel) state.channel.close();
   state.channel = null;
   $("#session-app").classList.add("hidden");
@@ -310,9 +354,14 @@ $("#leave-session").addEventListener("click", () => {
 });
 $("#home-button").addEventListener("click", () => $("#leave-session").click());
 $("#toggle-mute").addEventListener("click", (event) => {
-  const muted = $("#shared-video").muted;
-  $("#shared-video").muted = !muted;
-  event.currentTarget.textContent = muted ? "Mute" : "Unmute";
+  const tracks = state.stream?.getAudioTracks() || [];
+  if (!tracks.length) {
+    showToast("This shared screen has no audio.");
+    return;
+  }
+  const enabled = tracks[0].enabled;
+  tracks.forEach((track) => { track.enabled = !enabled; });
+  event.currentTarget.textContent = enabled ? "Unmute" : "Mute";
 });
 $("#toggle-fullscreen").addEventListener("click", () => {
   const stage = $(".stage");
@@ -321,4 +370,4 @@ $("#toggle-fullscreen").addEventListener("click", () => {
 });
 
 const roomFromHash = location.hash.match(/room=([A-Z0-9-]+)/i)?.[1];
-if (roomFromHash) setTimeout(() => setSessionMode(roomFromHash), 100);
+if (roomFromHash) setTimeout(() => setSessionMode(roomFromHash, "viewer"), 100);

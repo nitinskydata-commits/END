@@ -12,14 +12,22 @@ export default {
       server.accept();
       let roomCode = "";
       let peerId = "";
+      let heartbeat;
+      heartbeat = setInterval(() => {
+        if (server.readyState === 1) server.send(JSON.stringify({ type: "ping" }));
+      }, 25000);
 
       server.addEventListener("message", (event) => {
         let message;
         try { message = JSON.parse(event.data); } catch { return; }
 
         if (message.type === "join") {
-          roomCode = message.room;
-          peerId = message.peerId;
+          roomCode = String(message.room || "").replace(/[^A-Z0-9-]/gi, "").slice(0, 7).toUpperCase();
+          peerId = String(message.peerId || "").slice(0, 64);
+          if (!roomCode || !peerId) {
+            server.send(JSON.stringify({ type: "error", message: "Invalid room" }));
+            return;
+          }
           if (!rooms.has(roomCode)) rooms.set(roomCode, new Map());
           const room = rooms.get(roomCode);
           for (const [existingPeerId, socket] of room) {
@@ -36,6 +44,7 @@ export default {
       });
 
       server.addEventListener("close", () => leaveRoom(roomCode, peerId));
+      server.addEventListener("close", () => clearInterval(heartbeat));
       server.addEventListener("error", () => leaveRoom(roomCode, peerId));
 
       return new Response(null, { status: 101, webSocket: client });
