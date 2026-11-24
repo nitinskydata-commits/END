@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07130d" />
+    <meta name="description" content="Private, real-time screen sharing sessions." />
+    <title>Mirrora - Secure Screen Sharing</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="grain"></div>
+    <main id="landing" class="landing">
+      <nav class="nav">
+        <a class="brand" href="#" aria-label="Mirrora home">
+          <span class="brand-mark"><i></i><i></i><i></i></span>
+          <span>MIRRORA</span>
+        </a>
+        <div class="nav-actions">
+          <button id="login-button" class="text-button">Log in</button>
+          <button id="register-button" class="nav-register">Create account</button>
+        </div>
+      </nav>
+
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span></span> PRIVATE SCREEN SPACE</div>
+          <h1>Share the moment.<br /><em>Not the data.</em></h1>
+          <p>Open a secure screen session and invite anyone to see or collaborate. No downloads, no complicated setup.</p>
+          <div class="hero-actions">
+            <button id="start-share" class="primary"><span class="button-icon">+</span> Share my screen</button>
+            <button id="view-screen" class="secondary"><span class="play-icon">▶</span> View a screen</button>
+          </div>
+          <div class="proof">
+            <div class="faces"><span>JM</span><span>AK</span><span>RS</span></div>
+            <div><strong>End-to-end private</strong><small>Peer-to-peer WebRTC connection</small></div>
+          </div>
+        </div>
+
+        <div class="visual" aria-label="Screen sharing preview">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="phone phone-back">
+            <div class="phone-speaker"></div>
+            <div class="mini-screen mini-one"><div class="mini-photo"></div><span>Desktop</span></div>
+          </div>
+          <div class="phone phone-front">
+            <div class="phone-speaker"></div>
+            <div class="screen">
+              <div class="screen-top"><span class="live-dot"></span><b>LIVE</b><small>14:32</small></div>
+              <div class="screen-art">
+                <div class="art-sun"></div>
+                <div class="art-mountain back"></div>
+                <div class="art-mountain front"></div>
+                <div class="art-road"></div>
+              </div>
+              <div class="screen-bottom"><div class="participants"><span></span><span></span><span></span></div><button>3 connected</button></div>
+            </div>
+          </div>
+          <div class="secure-chip"><span>✓</span><div><small>CONNECTION</small><strong>Encrypted</strong></div></div>
+          <div class="code-chip"><small>SESSION CODE</small><strong>8X4-K2</strong></div>
+        </div>
+      </section>
+
+      <section class="steps">
+        <article><span>01</span><div><h3>Create a session</h3><p>Set up a private room in one tap.</p></div></article>
+        <article><span>02</span><div><h3>Share the code</h3><p>Invite a phone or laptop with a link.</p></div></article>
+        <article><span>03</span><div><h3>Start viewing</h3><p>Watch live with low-latency WebRTC.</p></div></article>
+      </section>
+    </main>
+
+    <main id="session-app" class="session-app hidden">
+      <header class="session-header">
+        <a class="brand" id="home-button"><span class="brand-mark"><i></i><i></i><i></i></span><span>MIRRORA</span></a>
+        <div class="room-status"><span id="room-status-dot"></span><b id="room-status-text">Ready</b></div>
+        <div class="header-actions">
+          <button id="copy-link" class="ghost-button">Copy link</button>
+          <button id="leave-session" class="leave-button">Leave</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="room-panel">
+          <div class="panel-label">YOUR SESSION</div>
+          <div class="room-code-row"><strong id="room-code">----</strong><button id="copy-code" title="Copy code">⧉</button></div>
+          <div id="qr-wrap" class="qr-wrap"><canvas id="qr-canvas" width="180" height="180"></canvas></div>
+          <p>Scan or enter this code on another device.</p>
+          <div class="device-list">
+            <div class="device-item active"><span class="device-icon">▰</span><div><strong>This device</strong><small id="self-status">Ready</small></div><b>●</b></div>
+            <div id="peer-list"></div>
+          </div>
+        </aside>
+
+        <div class="stage">
+          <div id="empty-stage" class="empty-stage">
+            <div class="stage-icon"><span>▱</span></div>
+            <h2>Choose what to share</h2>
+            <p>Select a screen, window, or browser tab.</p>
+            <button id="choose-screen" class="primary">Choose screen</button>
+          </div>
+          <video id="shared-video" autoplay playsinline muted></video>
+          <div id="stream-controls" class="stream-controls hidden">
+            <button id="toggle-mute">Mute</button>
+            <button id="toggle-fullscreen">Fullscreen</button>
+            <button id="stop-share">Stop sharing</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="join-dialog" class="modal">
+      <form method="dialog" class="modal-card" id="join-form">
+        <button class="modal-close" value="cancel" aria-label="Close">×</button>
+        <div class="modal-icon">⌁</div>
+        <h2>Join a screen</h2>
+        <p>Enter the 6-character session code.</p>
+        <label>Session code<input id="join-code" maxlength="7" autocomplete="off" placeholder="8X4-K2" /></label>
+        <button id="join-button" class="primary" value="default">Join session</button>
+        <button type="button" class="guest-button" id="guest-button">Continue as guest</button>
+      </form>
+    </dialog>
+
+    <dialog id="auth-dialog" class="modal">
+      <form method="dialog" class="modal-card" id="auth-form">
+        <button class="modal-close" value="cancel" aria-label="Close">×</button>
+        <div class="modal-icon">M</div>
+        <h2 id="auth-title">Welcome back</h2>
+        <p id="auth-subtitle">Sign in to manage your private sessions.</p>
+        <label class="auth-name hidden">Name<input id="auth-name" type="text" placeholder="Your name" /></label>
+        <label>Email<input id="auth-email" type="email" required placeholder="you@example.com" /></label>
+        <label>Password<input id="auth-password" type="password" required minlength="6" placeholder="Minimum 6 characters" /></label>
+        <button id="auth-submit" class="primary" value="default">Log in</button>
+        <button type="button" class="guest-button" id="auth-guest">Continue as guest</button>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast"></div>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
+    <script src="./app.js" defer></script>
+  </body>
+</html>

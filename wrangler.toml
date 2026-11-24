@@ -1,0 +1,11 @@
+name = "mirrora"
+main = "worker.js"
+compatibility_date = "2026-11-24"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = ["/ws"]
+
+[vars]
+APP_NAME = "Mirrora"
