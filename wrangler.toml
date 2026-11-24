@@ -1,11 +1,3 @@
 name = "mirrora"
-main = "worker.js"
+pages_build_output_dir = "dist"
 compatibility_date = "2026-11-24"
-
-[assets]
-directory = "."
-binding = "ASSETS"
-run_worker_first = ["/ws"]
-
-[vars]
-APP_NAME = "Mirrora"

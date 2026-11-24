@@ -1,0 +1,11 @@
+{
+  "name": "mirrora",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "wrangler pages deploy dist --project-name mirrora"
+  },
+  "devDependencies": {
+    "wrangler": "^4.167.0"
+  }
+}
