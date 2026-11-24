@@ -95,6 +95,7 @@ async function chooseScreen() {
     $("#room-status-text").textContent = "Live";
     $("#room-status-dot").classList.add("live");
     if (state.channel) state.channel.postMessage({ type: "streaming", room: state.roomCode });
+    state.socket?.send(JSON.stringify({ type: "streaming", room: state.roomCode }));
     stream.getVideoTracks()[0].addEventListener("ended", stopSharing);
     for (const peer of state.peers.values()) addStreamTracks(peer, stream);
     renegotiatePeers();
@@ -116,6 +117,7 @@ function stopSharing() {
   $("#room-status-text").textContent = "Ready";
   $("#room-status-dot").classList.remove("live");
   if (state.channel) state.channel.postMessage({ type: "stopped", room: state.roomCode });
+  state.socket?.send(JSON.stringify({ type: "stopped", room: state.roomCode }));
 }
 
 function connectSignaling() {
@@ -131,8 +133,14 @@ function connectSignaling() {
     state.socket.send(JSON.stringify({
       type: "join",
       room: state.roomCode,
-      peerId: state.peerId
+      peerId: state.peerId,
+      role: state.role
     }));
+    setTimeout(() => {
+      if (state.stream) {
+        state.socket?.send(JSON.stringify({ type: "streaming", room: state.roomCode }));
+      }
+    }, 150);
   });
 
   state.socket.addEventListener("close", () => {
@@ -158,13 +166,28 @@ function connectSignaling() {
     if (message.type === "peer_joined" && message.peerId !== state.peerId) {
       state.peers.set(message.peerId, createPeer(message.peerId));
       $("#peer-list").innerHTML = `<div class="device-item"><span class="device-icon">▰</span><div><strong>Remote device</strong><small>Connected</small></div><b>●</b></div>`;
-      if (state.stream) {
+      if (state.role === "host" && state.stream) {
         addStreamTracks(state.peers.get(message.peerId), state.stream);
         await renegotiatePeer(message.peerId);
+      }
+    } else if (message.type === "room_state") {
+      if (message.streaming) {
+        $("#room-status-text").textContent = "Screen is live";
+        $("#room-status-dot").classList.add("live");
+        state.socket?.send(JSON.stringify({
+          type: "request_stream",
+          room: state.roomCode,
+          requester: state.peerId
+        }));
+      } else if (state.role !== "host") {
+        $("#room-status-text").textContent = "Waiting for host";
+        $("#room-status-dot").classList.remove("live");
       }
     } else if (message.type === "peer_left") {
       state.peers.get(message.peerId)?.close();
       state.peers.delete(message.peerId);
+    } else if (message.type === "request_stream") {
+      if (state.role === "host" && state.stream) renegotiatePeers();
     } else if (message.type === "signal" && message.target === state.peerId) {
       await handleSignal(message.sender, message.payload);
     }

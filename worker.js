@@ -28,18 +28,42 @@ export default {
             server.send(JSON.stringify({ type: "error", message: "Invalid room" }));
             return;
           }
-          if (!rooms.has(roomCode)) rooms.set(roomCode, new Map());
+          if (!rooms.has(roomCode)) rooms.set(roomCode, { peers: new Map(), streaming: false });
           const room = rooms.get(roomCode);
-          for (const [existingPeerId, socket] of room) {
+          for (const [existingPeerId, socket] of room.peers) {
             socket.send(JSON.stringify({ type: "peer_joined", peerId }));
             server.send(JSON.stringify({ type: "peer_joined", peerId: existingPeerId }));
           }
-          room.set(peerId, server);
+          room.peers.set(peerId, server);
+          server.send(JSON.stringify({ type: "room_state", streaming: room.streaming }));
         }
 
         if (message.type === "signal" && rooms.has(roomCode)) {
-          const target = rooms.get(roomCode).get(message.target);
+          const target = rooms.get(roomCode).peers.get(message.target);
           if (target) target.send(JSON.stringify(message));
+        }
+
+        if (message.type === "request_stream" && rooms.has(roomCode)) {
+          for (const [existingPeerId, socket] of rooms.get(roomCode).peers) {
+            if (existingPeerId !== peerId) {
+              socket.send(JSON.stringify({
+                type: "request_stream",
+                requester: message.requester
+              }));
+            }
+          }
+        }
+
+        if ((message.type === "streaming" || message.type === "stopped") && rooms.has(roomCode)) {
+          const room = rooms.get(roomCode);
+          room.streaming = message.type === "streaming";
+          for (const socket of room.peers.values()) {
+            socket.send(JSON.stringify({
+              type: "room_state",
+              streaming: room.streaming,
+              peerId
+            }));
+          }
         }
       });
 
@@ -58,7 +82,7 @@ export default {
 function leaveRoom(roomCode, peerId) {
   if (!roomCode || !rooms.has(roomCode)) return;
   const room = rooms.get(roomCode);
-  room.delete(peerId);
-  for (const socket of room.values()) socket.send(JSON.stringify({ type: "peer_left", peerId }));
-  if (room.size === 0) rooms.delete(roomCode);
+  room.peers.delete(peerId);
+  for (const socket of room.peers.values()) socket.send(JSON.stringify({ type: "peer_left", peerId }));
+  if (room.peers.size === 0) rooms.delete(roomCode);
 }
