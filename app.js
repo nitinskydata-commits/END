@@ -11,7 +11,8 @@ const state = {
   role: "host",
   peers: new Map(),
   reconnectAttempt: 0,
-  intentionalClose: false
+  intentionalClose: false,
+  isExtendMode: false
 };
 
 function randomCode() {
@@ -42,10 +43,20 @@ function closeDialog(dialog) {
 function setSessionMode(code, role = "viewer") {
   state.roomCode = code || randomCode();
   state.role = role;
+  state.isExtendMode = role === "extend";
   state.intentionalClose = false;
   $("#room-code").textContent = state.roomCode;
   $("#landing").classList.add("hidden");
   $("#session-app").classList.remove("hidden");
+  if (role === "extend") {
+    $("#empty-title").textContent = "Waiting for your computer";
+    $("#empty-description").textContent = "Keep this device awake and rotate it for a full-screen second display.";
+  } else if (role === "viewer") {
+    $("#empty-title").textContent = "Waiting for a live screen";
+    $("#empty-description").textContent = "The shared screen will appear here automatically.";
+  }
+  requestWakeLock();
+  lockSecondScreenOrientation();
   drawQR();
   connectSignaling();
   history.replaceState({}, "", `#room=${encodeURIComponent(state.roomCode)}`);
@@ -62,7 +73,11 @@ function startSharing(isViewer = false) {
 
 async function chooseScreen() {
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    showToast("Screen sharing is not supported in this browser.");
+    if (/android|iphone|ipad|mobile/i.test(navigator.userAgent)) {
+      showToast("Open this site in Chrome or Edge on desktop to share a screen.");
+    } else {
+      showToast("Screen sharing is not supported in this browser.");
+    }
     return;
   }
   try {
@@ -171,6 +186,8 @@ function createPeer(peerId) {
   peer.ontrack = ({ streams }) => {
     const video = $("#shared-video");
     video.srcObject = streams[0];
+    video.muted = state.isExtendMode;
+    video.play().catch(() => {});
     $("#empty-stage").classList.add("hidden");
     $("#stream-controls").classList.remove("hidden");
     $("#room-status-text").textContent = "Receiving live";
@@ -284,6 +301,20 @@ function drawQR() {
   ctx.fillRect(36, size - 44, 8, 8);
 }
 
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator) || !state.isExtendMode) return;
+  try {
+    state.wakeLock = await navigator.wakeLock.request("screen");
+  } catch {}
+}
+
+async function lockSecondScreenOrientation() {
+  if (!state.isExtendMode || !screen.orientation?.lock) return;
+  try {
+    await screen.orientation.lock("any");
+  } catch {}
+}
+
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -309,6 +340,7 @@ function setAuthMode(mode) {
 
 $("#start-share").addEventListener("click", () => startSharing(false));
 $("#view-screen").addEventListener("click", () => startSharing(true));
+$("#extend-screen").addEventListener("click", () => openDialog($("#join-dialog")));
 $("#choose-screen").addEventListener("click", chooseScreen);
 $("#stop-share").addEventListener("click", stopSharing);
 $("#login-button").addEventListener("click", () => setAuthMode("login"));
@@ -330,9 +362,10 @@ $("#join-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const code = $("#join-code").value.trim().toUpperCase();
   if (!code) return;
+  const mode = $('input[name="join-mode"]:checked')?.value || "viewer";
   closeDialog($("#join-dialog"));
-  setSessionMode(code, "viewer");
-  showToast("Joined session.");
+  setSessionMode(code, mode);
+  showToast(mode === "extend" ? "Second-screen mode enabled." : "Joined session.");
 });
 $("#guest-button").addEventListener("click", () => {
   closeDialog($("#join-dialog"));
@@ -371,3 +404,7 @@ $("#toggle-fullscreen").addEventListener("click", () => {
 
 const roomFromHash = location.hash.match(/room=([A-Z0-9-]+)/i)?.[1];
 if (roomFromHash) setTimeout(() => setSessionMode(roomFromHash, "viewer"), 100);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}

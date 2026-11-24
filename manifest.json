@@ -1,0 +1,10 @@
+{
+  "name": "Mirrora Screen Sharing",
+  "short_name": "Mirrora",
+  "description": "Secure screen sharing and second-screen sessions.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f2f0e8",
+  "theme_color": "#07130d",
+  "orientation": "any"
+}

@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#07130d" />
     <meta name="description" content="Private, real-time screen sharing sessions." />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Mirrora - Secure Screen Sharing</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -30,6 +33,7 @@
           <div class="hero-actions">
             <button id="start-share" class="primary"><span class="button-icon">+</span> Share my screen</button>
             <button id="view-screen" class="secondary"><span class="play-icon">▶</span> View a screen</button>
+            <button id="extend-screen" class="secondary"><span class="play-icon">▥</span> Use as second screen</button>
           </div>
           <div class="proof">
             <div class="faces"><span>JM</span><span>AK</span><span>RS</span></div>
@@ -94,8 +98,8 @@
         <div class="stage">
           <div id="empty-stage" class="empty-stage">
             <div class="stage-icon"><span>▱</span></div>
-            <h2>Choose what to share</h2>
-            <p>Select a screen, window, or browser tab.</p>
+            <h2 id="empty-title">Choose what to share</h2>
+            <p id="empty-description">Select a screen, window, or browser tab.</p>
             <button id="choose-screen" class="primary">Choose screen</button>
           </div>
           <video id="shared-video" autoplay playsinline muted></video>
@@ -115,6 +119,11 @@
         <h2>Join a screen</h2>
         <p>Enter the 6-character session code.</p>
         <label>Session code<input id="join-code" maxlength="7" autocomplete="off" placeholder="8X4-K2" /></label>
+        <fieldset class="join-mode">
+          <legend>Open as</legend>
+          <label><input type="radio" name="join-mode" value="viewer" checked /> View only</label>
+          <label><input type="radio" name="join-mode" value="extend" /> Second screen</label>
+        </fieldset>
         <button id="join-button" class="primary" value="default">Join session</button>
         <button type="button" class="guest-button" id="guest-button">Continue as guest</button>
       </form>
